@@ -1,0 +1,881 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blogs>
+	<blog>
+		<title>CFBlog-Plus搭建教程</title>
+		<content>## 简介
+使用 Cloudflare Workers 和 Workers KV 开发的CFBlog-Plus(CFBlog升级版)开源博客程序搭建免费网站的详细图文教程
+
+首先介绍一下CF-Blog，这是一个运行在 Cloudflare Workers 上并使用 Workers KV 作为数据库的开源博客程序，无其他依赖，兼顾静态博客的速度和动态博客的灵活性，搭建方便不折腾。CF-Blog博客的缓存效果类似静态博客，评论依赖于第三方，可以添加waline评论系统（waline是valine的民间版本，比valine好用一点）。
+
+CFBlog-Plus作为CFBlog的升级版，在自主开源了index_plus.js外，还增加了一下其他功能：
+1. 扩展md编辑器配置，可以自行根据需要修改配置。目前可配置支持html标签解析（默认关闭），更多设置参考[editormd官网](https://pandao.github.io/editor.md/)
+2. 后台新建页和编辑页，自动设置时间和默认图片(使用JustNews主题时必须设置，否则样式大变)，默认图片为：![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/cfblog/cfblog-plus.png)
+
+一些功能还在规划中：
+- [x] 文章公开、隐藏设置
+- [x] 文章置顶设置
+- [x] 静态搜索
+- [ ] 文章独立密码
+
+CFBlog-Plus项目地址：&amp;lt;https://github.com/Arronlong/cfblog-plus&amp;gt;
+
+CFBlog-Plus演示网站：&amp;lt;https://blog.arrontg.cf&amp;gt;
+
+## 部署步骤
+
+### 1）前提：注册Cloudflare账号
+无CF账号的，[点击直达Cloudfalre注册页面](https://dash.cloudflare.com/signup")进行注册。
+
+### 2）将域名托管到CloudFlare中(没有域名也要乱写一个)
+
+如果想使用自己的域名，需将您的域名NS修改为Cloudflare的NS服务器，使用Cloudflare管理您的域名。
+
+如果您没有自己的域名，也需要乱写一个域名，比如abcde.com。因为通过API清除KV缓存时，会用到区域ID。此时您无法使用abcde.com进行访问博客，但依旧可以用过workers.dev进行访问。
+
+如域名已托管到CloudFlare中，进入域名站点管理页面，页面向下滑动，记录右侧的“区域ID”的值，后续会用到。
+
+如果您不知道如何将域名托管到Cloudflare管理，请参考文章[通过 Cloudflare Partner 的CName方式接入并利用智能DNS解析为不同网络线路分配优选Cloudflare自定义IP节点实现全球CDN加速](https://iyideng.me/black-technology/accelerator/cloudflare-partner-cname-method-and-use-intelligent-dns-resolution-assign-custom-ip-to-speedup.html)
+
+
+### 3）获取清除缓存 API 令牌
+打开[API令牌](https://dash.cloudflare.com/profile/api-tokens)管理页面，点击“创建令牌”按钮，页面拉到最下面，点击“创建自定义令牌”后面的“开始使用”按钮，按以下方式填写。
+
+令牌名字：`PurgeCache-CFBlog`
+缓存权限：`区域 -&amp;gt; 缓存清除 -&amp;gt; 清除`
+区域资源：`包括 -&amp;gt; 特定区域 -&amp;gt; 【您的域名】`
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131181139.png)
+
+以上设置完成后，点击最下面的“继续以显示摘要”，然后点击“创建令牌”按钮，然后点击“Copy”按钮将Token复制出来，后续会用到。如下图所示：
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131182045.png)
+
+然后重新刷新页面，可以看到刚添加的令牌。状态显示为“有效”即可。
+如果忘记Copy之前的Token，可以点击末尾的“...”，选择“投放”，并确定投放即可刷新新的Token。
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131182611.png)
+
+### 3）新建KV命名空间
+
+打开[CloudFlare主页](https://dash.cloudflare.com/)，点击右侧的“Workers”，然后点击“KV”项，即可进入“Worker KV”管理页面。
+
+在命名空间名称输入框里任意输入一个名称，为了见名知义，这里最好使用`CFBLOG`作为命名空间名称。点击添加即可。如下图所示：
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131173444.png)
+
+### 5）创建Workers
+点击挨着“KV”的“Workers”项，进入 Cloudflare Workers 管理页面，点击“创建Workers”，进入Workers编辑页面（每个账户最多只允许创建30个）。
+
+将[index_plus.js](https://github.com/Arronlong/cfblog-plus/blob/master/index_plus.js)中的内容替换workers的内容。
+
+先不修改配置，然后点击“保存并部署”。然后点击“&amp;lt;”箭头，返回该workers的配置页面，自行“重命名”，然后“设置”选项卡，添加“KV 命名空间绑定”，变量名随意起，推荐用`CFBLOG`，下拉选择新添加的KV命名空间，点击“保存按钮”。
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131193004.png)
+
+再将页面滑动上面，点击“快速编辑”，重新打开workers的编辑页面开始添加各类配置。
+
+在CFBlog-Plus中，提供了2个配置变量`ACCOUNT`和`OPT`。
+
+**ACCOUNT**，记录账号相关的配置，安全性更高，单独配置。
+```
+    "user" : "后台用户名", //博客后台用户名
+    "password" : "后台密码", //博客后台密码
+    "cacheZoneId":"935xxxxxxxxxxxx",//区域 ID
+    "cacheToken":"xxxxxxxx",//API token
+    "kv_var": this['CFBLOG'],//workers绑定kv时用的变量名
+```
+
+其中`cacheZoneId`和`cacheToken`，分别对应第2步和第3步提到的值。`kv_var`的值则对应的是刚才在绑定KV命名空间时的环境变量名称。
+
+**OPT**，记录网站相关配置
+```
+    "siteDomain" : "域名",// 域名(不带https 也不带/)
+    "siteName" : "CFBLOG博客名称",//博客名称
+    "siteDescription":"CFBLOG博客描述" ,//博客描述
+    "keyWords":"cloudflare,KV,workers,blog",//关键字
+    "logo":"//cdn.jsdelivr.net/gh/Arronlong/cfblog-plus@master/themes/JustNews/files/logo2.png",//JustNews主题的logo
+    "theme_github_path":"//cdn.jsdelivr.net/gh/Arronlong/cfblog-plus@master/themes/",//主题路径
+```
+
+以上配置项均根据配置说明进行配置即可。要记得“保存并部署”
+
+可以点击右侧的“预览”选项卡进行预览，能成功出现页面就说明配置成功了。
+
+### 6）【非必须】配置域名访问
+此项配置，仅针对有自己域名的用户有效。对于无自己域名，由于随便写的一个域名，所以无法通过验证，所以也无法通过域名访问CFBlog-Plus。只能通过workers.dev域名访问。
+
+在CF首页点击第二步添加的域名，进入域名站点管理页面，点击“Workers”图标，打开Workers配置。
+
+点击“添加路由”，按提示填写域名，并选择刚添加的workers，然后点击“保存”，如图所示
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210131210029.png)
+
+保存后可以看到列表里有刚添加的信息，自此，所有配置已经完成，可以愉快的写博客了。
+</content>
+		<url>https://blog.arrontg.cf/article/000004/.html</url>
+		<time>2021-01-14</time>
+	</blog>
+	<blog>
+		<title>CFBlog-Plus更新日志，持续更新【2021年4月6日】</title>
+		<content># 本页更新日志说明
+
+&amp;gt; 所有更新日志,将集中在本文,持续更新
+
+CFBlog-Plus项目地址：https://github.com/Arronlong/cfblog-plus
+
+CFBlog-Plus演示网站：https://blog.arrontg.cf
+
+# RoadMap
+- [x] 编辑器工具栏添加HTML标签解析开关
+- [x] 文章隐藏设置
+- [x] 文章置顶设置
+- [x] 静态搜索
+- [ ] 文章独立密码
+
+---
+# 2021年4月6日更新日志
+
+&amp;gt; 1.优化搜索实现
+
+详细配置，请转移到：[为你的CFBlog添加全文搜索功能](https://blog.arrontg.cf/article/000009/.html)
+
+---
+# 2021年3月28日更新日志
+
+&amp;gt; 1.近期文章规则调整
+
+为文章添加了最后更新时间的属性，近期文章将以最后更新时间为倒序的文章作为结果进行呈现
+
+&amp;gt; 2.实现文章隐藏功能
+
+被设置隐藏的文章啊，仅在后台文章列表中可见，且标题前带有[隐藏]前缀字样，可通过`OPT.hidden_flag`和`OPT.hidden_flag_style`来自定义隐藏前缀和css样式
+
+&amp;gt; 3.添加后台首页选择功能
+
+可通过参数`OPT.admin_home_idx`进行后台首页tab选择，索引取值：1-我的文章,2-新建,3-设置,4-发布
+
+&amp;gt; 4.实现文章置顶功能
+
+具体修改如下：
+- 在新建和编辑文章时，可以选择是否置顶
+- 前后台文章列表页均会将置顶的文章排列在最前面，且最新置顶的文章排在最前面，并带有[置顶]前缀，可通过参数`OPT.top_flag`和`OPT.top_flag_style`来自定义置顶前缀和css样式
+- 文章内容页、上一篇、下一篇以及近期文章列表中的文章如果为置顶文章，则标题同样会带有[置顶]前缀
+
+&amp;gt; 5.文章浏览页添加编辑直达功能
+
+在浏览文章时，在文章附属属性行末会显示“编辑”字样，点击后，直达文章编辑页
+
+---
+# 2021年2月1日更新日志
+
+&amp;gt; md编辑器的工具栏上添加解析HTML标签开关
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210201005350.png)
+
+---
+# 2020-01-31更新日志
+
+&amp;gt; 发布CFBlog-Plus
+
+### 更新内容
+
+- 自主开源[index_plus.js](https://github.com/Arronlong/cfblog-plus/blob/master/index_plus.js)
+- 扩展md编辑器配置，可以自行根据需要修改配置。目前可配置支持html标签解析（默认关闭），更多设置参考[editormd官网](https://pandao.github.io/editor.md/)
+- 后台新建页和编辑页，自动设置时间和默认图片(使用JustNews主题时必须设置，否则样式大变)，默认图片为：![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/cfblog/cfblog-plus.png)
+
+
+
+</content>
+		<url>https://blog.arrontg.cf/article/000006/.html</url>
+		<time>2021-01-14</time>
+	</blog>
+	<blog>
+		<title>末日公会战安排</title>
+		<content># 公会战安排
+
+### 公会战转移机制
+
+1. 常驻小号：老爺请喝茶(神殿id:85)、给哥也笑一个(散人id:113)、无处可逃（一起杀杀杀id:91）
+
+2. 每次公会战第一天，由小号或者主动留守成员查看战场情况，决定是否转移
+
+3. 由组织者团队发布转移名单和留守名单，团队成员(智尊、冷风、马老师、唐三炮、开心、大爷也疯狂、给爷笑一个)
+
+4. 留守人员，会安排指挥官位置，负责当前公会的工会战安排，并领取指挥官专属奖励
+
+5. 主动留守的可以在本赛季可一直当指挥官；非主动留守的在位置不足时，实行轮值，在第6天晚上场踢，第7天安排另外一拨
+
+6. 对转移安排不同意者，可以找另一方人员进行协商调换，对方同意后，请通知组织者团队
+
+7. 私自退会进行转移者，我们有权拒绝接受
+
+---
+
+## 第12赛季
+
+时间：2021.05.3 ~ 2021.05.16
+
+3天报名+4天（3场/天）+7天（2场/天）
+
+### 一起杀杀杀（17/27）:
+
+**原有人员**：无处可逃、李怡罗木
+
+**组织者6个**：智尊、给爷笑一个、冷风、潜伏者、马老师五连鞭、蓝V鲸
+
+**已转移7个**：明天、嗯哼哈嘿、gglwa、Zhan1234、逍遥灬鲲、老牛、文武宝贝
+
+**在路上**：及时行乐、阿诺丝袜性割
+
+### 神殿(12/30)：
+
+**会长**：老爷请喝茶
+
+**留守/已参战**6人：占山不为王、4KGrubby、夏风（未加群）、野蛮冲撞（未加群）、aaaaaaaaa（未加群）、Crazy神杰（未加群）
+
+**待转移**1人：尼古拉斯·怄火（**询问加群**）
+
+**未参战&amp;未加群**2人：那个谁、自信感
+
+**弃坑**2人：空格、神刺
+
+### 散人（22/30）:
+
+**会长**：给哥也笑一个
+
+**留守/已参战**7人：哦莫莫莫、沙漠中的风景、蛋蛋的、就这么活着（未加群）、天龙八部修身（未加群）、战者胜（未加群）、抖音骗进来的（未加群）
+
+**待转移**4人：大爷也疯狂、唐三炮、开心、无聊
+
+**未参战&amp;未加群**10人：独孤霸天、MonsterF、迈开轮胎、嵊&amp;良缘...、只为红颜、带你回家、疯魔、土豪哥、拉风、陈陈
+
+**弃坑**：/
+
+---
+
+## 第11赛季
+
+时间：2021.04.19 ~ 2021.05.02
+
+3天报名+4天（3场/天）+7天（2场/天）
+
+### 散人（空位13+大爷也疯狂）:
+
+组织者团队成员9个角色 + 转移5个（文武宝贝、gglwa、无聊、明天、阿诺丝袜性割）
+
+### 胯下(安排指挥官)：
+
+Zhan1234、哼哼哈嘿、占山不为王、老牛、4KGrubby、蛋蛋的
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210423111753.jpg)</content>
+		<url>https://blog.arrontg.cf/article/000010/.html</url>
+		<time>2021-04-22</time>
+	</blog>
+	<blog>
+		<title>为你的CFBlog添加全文搜索功能</title>
+		<content>全文搜索功能已上线，实现方法源自：&amp;lt;https://knightyun.github.io/2019/03/04/articles-search&amp;gt;。
+
+经过几次修改，终于确定了一个较为简单的实现方式。步骤如下：
+
+## 1. 拉取最新代码
+
+拉取最新代码才能方便的使用此功能。
+
+搜索功能需要拉取所有文章的标题、内容等，并以search.xml的格式提供服务。最新代码中添加了search.xml的生成。
+
+## 2. 启用搜索
+
+在OPT的`codeBeforHead`参数中添加如下代码：
+
+```
+    &amp;lt;!--搜索实现：https://knightyun.github.io/2019/03/04/articles-search--&amp;gt;
+    &amp;lt;link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"&amp;gt;
+    &amp;lt;link href="https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/cfblog/search/search.css" rel="stylesheet"&amp;gt;
+    &amp;lt;script&amp;gt;
+      $(function() {
+        let searchhtml=\`
+          &amp;lt;div id="searcharea" class="widget widget_links"&amp;gt;
+          &amp;lt;div class="search"&amp;gt;
+            &amp;lt;i class="material-icons search-icon search-start"&amp;gt;search&amp;lt;/i&amp;gt;
+            &amp;lt;input type="text" class="search-input" placeholder="Searching..." /&amp;gt;
+            &amp;lt;i class="material-icons search-icon search-clear"&amp;gt;clear&amp;lt;/i&amp;gt;
+            &amp;lt;div class="search-results"&amp;gt;&amp;lt;/div&amp;gt;
+          &amp;lt;/div&amp;gt;
+          &amp;lt;/div&amp;gt;
+        \`;
+        $(".sidebar div").first().before(searchhtml);
+        $.getScript("https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/cfblog/search/search.js");
+      });
+    &amp;lt;/script&amp;gt;
+```
+
+## 3. 优化搜索实现
+
+由于默认实现是实时读取kv中的数据，而且是扫描所有博文，所以会无故消耗很大一部分的kv读取次数（同理，sitemap.xml也同样存在此问题）。所以这里推荐使用github的action来自动保存最新的search.xml和sitemap.xml
+
+### ①. 配置cf的workers的变量
+
+在cf的workers中新增了3个变量
+
+#### **`third_token`**
+
+ACCOUNT中新增了的变量，默认为cfblog，可自行修改。
+
+作用：开放token，当前仅允许访问/admin/search.xml，/admin/sitemap.xml时可用，在cfblog_token的头信息中传递。
+
+在github的action中使用，用于自动更新search.xml和sitemap.xml
+详见： &amp;lt;https://github.com/Arronlong/cfblog-plus/blob/master/.github/workflows/actions-cfblog.yml&amp;gt;
+
+####  **`search_xml_url`**
+
+OPT中的可选变量
+
+作用：指定search.xml外部链接
+
+如果不设置，则实时读取kv中的数据，并生成指定格式的xml，详见&amp;lt;https://github.com/Arronlong/cfblog-plus/blob/master/index_plus.js#L335&amp;gt;
+
+为了避免浪费不必要的kv读取次数，所以推荐对此类请求进行缓存。
+
+后台的“设置”页面最下面，提供了导出功能。可以自行导出，并放在自己的服务器上或者通过github的action提交到github项目中。
+
+由于导出是后台功能，所以需要校验用户名密码或者通过`third_token`参数进行导出。例如：
+```
+# 采用用户名+密码的方式
+auth=$(echo -n "用户名:密码" |base64)
+curl 'https://你的域名/admin/search.xml' -H 'Authorization: Basic ''$auth'' &amp;gt;search.xml
+
+# 为了安全，采用token的方式
+curl 'https://你的域名/admin/search.xml' -H 'cfblog_token: 变量third_token的值' &amp;gt;search.xml
+```
+
+推荐的方式：通过github的action自动导出，并提交到github上。
+
+#### **`sitemap_xml_url`**
+
+OPT中的可选变量
+
+作用：指定sitemap.xml外部链接。其他同上
+
+### ②. 配置github的action
+
+按下图配置Secret变量
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210406141020.png)
+
+变量说明：
+
+**`CFBLOG_TOKEN`**：值为`third_token`变量对应的值
+
+**`CFBLOG_HOST`**：值为你的域名，不含https://，末尾也不要加/
+
+**`CFBLOG_BRANCH`**：值为指定一个分支名称，比如xml。最终生成的search.xml和sitemap.xml自动提交到该分支。
+
+action是默认每天18点执行一次。
+
+以上3个Secret变量配置好了，点击自己项目的star这个图标，从“star”变成“unstar”就会触发action运行了。可以在“Action”这里查看。
+
+等待片刻，返回项目主页后，即可看到已经自动新建了一个分支。切换到该分支下，即可看到里面有search.xml和sitemap.xml了。
+
+这个时候可以点击search.xml和sitemap.xml文件，再点击“Raw”按钮，将地址复制出来，就可以作为`search_xml_url`和`sitemap_xml_url`变量的值了。
+</content>
+		<url>https://blog.arrontg.cf/article/000009/.html</url>
+		<time>2021-04-02</time>
+	</blog>
+	<blog>
+		<title>解读CFBlog-Plus的源码</title>
+		<content>项目地址：&amp;lt;a href="https://github.com/Arronlong/cfblog-plus" alt="cfblog的加强版" title="cfblog的加强版" target="_blank"&amp;gt;https://github.com/Arronlong/cfblog-plus&amp;lt;/a&amp;gt;
+
+根据大佬们的建议，根据相关性`index_plus.js`的源码进行了分块，并调整了块之间的前后顺序，前置了用户可能想要调整的内容。
+
+一共分了6大块，只有【①.谋而后定：配置区】是大家在部署时，必须根据自己的情况进行调整的地方。【③.分而治之：各种请求分开处理】这个区域如果有人想对某些请求做自己的处理（比如favorite.ico的图标），可以自行调整。其他区域建议直接复制。
+
+调整后的源码块如下：
+
+## ①.谋而后定：配置区
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330110159.png)
+
+## ②.猎杀时刻：请求处理入口
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330110629.png)
+
+## ③.分而治之：各种请求分开处理
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330110652.png)
+
+## ④.抽丝剥茧，抽取公用的业务方法
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330110814.png)
+
+## ⑤.术业有专攻，读写KV方法集
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330110949.png)
+
+## ⑥.站在巨人肩膀上，基础方法
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn@master/blogImg/20210330111033.png)</content>
+		<url>https://blog.arrontg.cf/article/000008/.html</url>
+		<time>2021-02-20</time>
+	</blog>
+	<blog>
+		<title>CF版Server酱，by企业微信通道</title>
+		<content>在Hostloc上看了mjj的帖子-[[经验] MJJ专用server酱 企业微信通道PHP版 ](https://www.hostloc.com/thread-806295-1-1.html)，感觉整一个自己的消息推送的服务也不错，不过对于喜欢折（白）腾（嫖）的我，还是希望使用cf的workers来做。
+
+## 缘由
+相信大家都用过或者听说过server酱
+因为微信发布公告将在4月底下线模板消息，Server酱开发了以企业微信为主的多通道新版。旧版将在4月后下线。
+
+这个企业微信是随便都可以注册的，且稍微操作后微信app端也可以收到推送。
+而且server酱的服务是有一些限制的，那我们就不如自己整一个推送通道。没有每分钟最多1条，免费版每天5条的限制。
+
+### 注册企业微信
+
+第一步呢要先注册企业微信，我们直接看server酱的教程，记下教程里的应用ID( agentid )，应用Secret( secret )，企业ID。
+原贴大佬把教程复制到石墨了，server酱的还需要登录才能看。https://shimo.im/docs/38dpjtwWtRRVQ6Wy
+
+### 在CF上创建workers
+
+这里只提供了卡片消息一种，有需要的可以参考企业微信的[api文档](https://work.weixin.qq.com/api/doc/90000/90135/90236)
+
+访问时带上参数就行啦，
+简单点：http://xxx.workers.dev/?msg=xxx
+复杂点：http://xxx.workers.dev/?title=xxx&amp;description=xxx&amp;url=xxx
+
+&amp;gt; **title** : 消息title，默认“Server酱通知”
+&amp;gt; **description** : 消息内容，默认“通知内容”
+&amp;gt; **url** : 跳转地址，默认“URL”
+
+workers的代码如下：
+```
+//教程：https://shimo.im/docs/38dpjtwWtRRVQ6Wy/read
+const OPT = {
+  corpid : '',//企业id
+  agentid:'',//应用id
+  corpsecret:'', //应用secret
+
+  access_token:undefined
+}
+
+addEventListener('fetch', event =&amp;gt; {
+  event.respondWith(handleRequest(event.request))
+})
+
+/**
+ * Respond to the request
+ * @param {Request} request
+ */
+async function handleRequest(request) {
+  let url = new URL(request.url);
+  //消息title
+  let title = url.searchParams.get('title')||"Server酱通知";
+  //消息内容
+  let description = url.searchParams.get('description')||url.searchParams.get('msg')||"通知内容";
+  //跳转地址
+  let jumpUrl = url.searchParams.get('url')||"URL";
+
+  //获取access_token，写入OPT中
+  let msg = await getAccessToken();
+  if(msg.errcode){
+    return new Response(JSON.stringify(msg), {
+      status: 200, 
+      headers:{
+        'content-type':'application/json; charset=UTF-8'
+      }
+    })
+  }
+
+  //发送消息
+  return await pushMsg(title, description, jumpUrl);
+}
+
+//获取access_token，写入OPT中
+async function getAccessToken(){
+  let result = await fetch("https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid="+OPT.corpid+"&amp;corpsecret="+OPT.corpsecret);
+  let json = await result.json();
+  console.log(json)
+  if(json.errcode==0){
+    OPT.access_token = json.access_token
+  }
+  return json
+}
+
+//发送消息
+async function pushMsg(title, description,url="URL",btntxt="更多"){
+  let body = {
+    /**
+     * 指定接收消息的成员，成员ID列表（多个接收者用‘|’分隔，最多支持1000个）。
+     * 特殊情况：指定为”@all”，则向该企业应用的全部成员发送
+     */
+    "touser" : "@all",//非必须，但touser、toparty、totag不能同时为空，后面不再强调。
+    /**
+     * 指定接收消息的部门，部门ID列表，多个接收者用‘|’分隔，最多支持100个。
+     * 当touser为”@all”时忽略本参数
+     */
+    //"toparty" : "PartyID1|PartyID2",//非必须
+    /**
+     * 指定接收消息的标签，标签ID列表，多个接收者用‘|’分隔，最多支持100个。
+     * 当touser为”@all”时忽略本参数
+     */
+    //"totag" : "TagID1 | TagID2",//非必须
+    "msgtype" : "textcard",//必须，消息类型，此时固定为：textcard
+    "agentid" : OPT.agentid,//企业应用的id，整型。企业内部开发，可在应用的设置页面查看；第三方服务商，可通过接口 获取企业授权信息 获取该参数值
+    "textcard" : {
+      "title" : title,//必须，标题，不超过128个字节，超过会自动截断（支持id转译）
+      "description" : description, //必须，消息内容，最长不超过2048个字节，超过将截断（支持id转译）
+      "url": url,//点击后跳转的链接。最长2048字节，请确保包含了协议头(http/https)
+      "btntxt":btntxt //非必须，按钮文字。 默认为“详情”， 不超过4个文字，超过自动截断。
+    },
+    "safe":0, //非必须, 表示是否是保密消息，0表示可对外分享，1表示不能分享且内容显示水印，默认为0
+    "enable_id_trans": 0,//非必须,表示是否开启id转译，0表示否，1表示是，默认0。仅第三方应用需要用到，企业自建应用可以忽略。
+    "enable_duplicate_check": 0,//非必须,表示是否开启重复消息检查，0表示否，1表示是，默认0
+    "duplicate_check_interval": 1800 //非必须,表示是否重复消息检查的时间间隔，默认1800s(3小时)，最大不超过4小时
+  }
+
+  return fetch("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token="+OPT.access_token,{
+    method:'post',
+    body: JSON.stringify(body)
+  });
+}
+```</content>
+		<url>https://blog.arrontg.cf/article/000007/.html</url>
+		<time>2021-02-13</time>
+	</blog>
+	<blog>
+		<title>内网穿透：dingtalk-pierced——钉钉开放平台官方内网穿透工具</title>
+		<content>鉴于很多开发者在临时体验开发时往往没有公网域名或者公网IP，这个工具提供了一个公网代理服务，目的是方便开发测试。
+
+嗷嗷测试了一下，看是基于Ngrok的。使用起来也是比较简单的。
+
+![内网穿透：dingtalk-pierced——钉钉开放平台官方内网穿透工具](https://cdn.jsdelivr.net/gh/peng4740/pic/2021/01/dingtalk/dingtalk.png)
+
+github地址：&amp;lt;https://github.com/open-dingtalk/pierced&amp;gt;
+下面直接说使用方法吧。
+
+## 一、下载程序
+从上面github地址里下载程序，或者直接用`git clone`
+
+这里以Linux系统为例
+```
+git clone https://github.com/open-dingtalk/pierced.git
+cd pierced/linux/
+```
+
+## 二、启动程序
+Linux、Mac下用系统终端，Windows下要用CMD，Powershell不知为何运行不了。
+
+执行`./ding -config=./ding.cfg -subdomain=域名前缀 被代理端口`，这里以Linux系统为例
+```
+chmod +x ./ding
+./ding -config=./ding.cfg -subdomain=haoduck 8080
+
+```
+
+参数说明：
+`config`内网穿透的配置文件，按命令照示例固定为钉钉提供的./ding.cfg，无需修改
+`subdomain`您需要使用的域名前缀，该前缀将会匹配到“vaiwan.com”前面，例如你的subdomain是abcde，启动工具后会将abcde.vaiwan.com映射到本地。
+`被代理端口` 您需要代理的本地服务http-server端口，例如你本地端口为8080等
+
+## 三、启动成功
+启动后界面如下图所示：
+![内网穿透：dingtalk-pierced——钉钉开放平台官方内网穿透工具](https://cdn.jsdelivr.net/gh/peng4740/pic/2021/01/dingtalk/dingtalk2.png)
+
+启动完客户端后，你访问`http://haoduck.vaiwan.com/xxxxx`都会映射到 `http://127.0.0.1:8080/xxxxx`。
+
+## 四、注意事项
+
+1. 你需要访问的域名是`http://abcde.vaiwan.com/xxxxx` 而不是`http://abcde.vaiwan.com:8080/xxxxx`
+2. 你启动命令的subdomain参数有可能被别人占用，尽量不要用常用字符，可以用自己公司名的拼音，例如：alibaba、dingding等。
+3. 可以在本地起个http-server服务，放置一个index.html文件，然后访问http://abcde.vaiwan.com/index.html测试一下。
+
+&amp;gt; 修改自： haoduck.com/723.html
+</content>
+		<url>https://blog.arrontg.cf/article/000005/.html</url>
+		<time>2021-01-10</time>
+	</blog>
+	<blog>
+		<title>解开CFBlog的index.js的面纱</title>
+		<content>CFBlog的index.js是混淆过的，不易理解，tg群里也问过作者，说不打算开源，这让一些爱折腾的人不好折腾了。
+
+经过本人多日的研究，梳理逻辑，将其进行人工格式化(不包含OPT配置)，并附件上注释，以供大家学习。
+
+[在线查看index_decrypt.js](https://github.com/Arronlong/cloudflare-workers-blog/blob/master/index_decrypt.js)
+
+这里除了添加换行、缩进和注释外，并未做其他改动。比如
+```
+"https://raw.githubusercontent.com/gdtool/cloudflare-workers-blog/master/themes/default/"==OPT.themeURL&amp;&amp;(OPT.themeURL="https://raw.githubusercontent.com/gdtool/cloudflare-workers-blog/master/themes/default2.0/")
+```
+其实正常代码应该是
+```
+//如果采用默认default主题，则改为加载default2.0主题
+if("https://raw.githubusercontent.com/gdtool/cloudflare-workers-blog/master/themes/default/"==OPT.themeURL){
+	OPT.themeURL="https://raw.githubusercontent.com/gdtool/cloudflare-workers-blog/master/themes/default2.0/"
+}
+```
+但为了保持与源码的一致性，依旧保留了第一种的方式。
+后续会根据自己的理解，自行写一套阅读性强的源码并开源，敬请期待。
+
+
+## 大纲结构
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn/blogImg/20210114114854.png)
+
+1~26行是一个主函数，27~末尾是这个函数的参数，这个参数是一个数组类型，包含3个函数，通过这个主函数加载这3个函数。
+
+数组中的第一个函数（第28行）不用搭理。
+
+数组中的第二个函数（第31~584行）是真实的处理逻辑，下面会展开介绍。
+
+数组中的第二个函数（第586行~末）是引入mustanche.js ，也不用搭理。
+
+
+## 解析第二个函数
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn/blogImg/20210114182458.png)
+
+从图中可以看出是一个集合列表
+
+前面（第35~138行）是定义了一堆函数（已混淆），大部分的函数已经加上注释了。
+
+```
+//博客前端主页
+//async function a(t,e,r){
+    
+//getKVArticleCategory
+//function i(t,e,r=OPT.pageSize){
+
+//返回上篇、本篇、下篇文章
+//function s(t){
+
+//翻页
+//function o(t,e=OPT.pageSize){
+
+//KV读取，t：key值，e：格式是否为json，默认true
+//function l(t,e=!1){
+
+//写入kv
+//function c(t,e){
+
+//获取主题指定页的模板源码
+//function g(t){
+
+//获取标签、分类列表？
+//function f(t){
+
+//判断是否为对象，若为字符串，则尝试转json后再判断
+//function h(t){
+
+//排序
+//function p(t,e,r=!0){
+```
+
+第162行是关键代码。用过cf workers的都知道，监听请求都是用`addEventListener`这个函数。
+
+### addEventListener中的函数说明
+
+这里只列举一下所在行，不进行展开说明，感兴趣的可以根据下面的方式进行自行阅读理解。
+
+1. 进行Base Auth（第184行）
+2. 导出文章（第206行）
+3. 处理主题预览及分页（第235行）
+4. 访问robots.txt（第243行）
+5. 访问favicon.ico（第252行）
+6. 访问sitemap.xml（第271行）
+7. 访问博客前台-分页（第298行）
+8. 访问博客前台-分类页（第348行）
+9. 访问博客前台-标签页（第352行）
+10. 访问博客前台-文章详情页（第356行）
+11. 访问博客管理后台-新建页（第413行）
+12. 请求博客管理后台接口-发布（第429行）
+13. 访问博客管理后台接口-文章列表页（第459行）
+14. 请求博客管理后台接口-修改文章（第466行）
+15. 请求博客管理后台接口-保存配置（第481行）
+16. 请求博客管理后台接口-导入（第492行）
+17. 请求博客管理后台接口-保存新建的文章（第504行）
+18. 设置浏览器缓存时间（第575行）
+
+## 阅读方式参考
+
+左侧源码，右侧函数列表，看到函数调用就看看右侧的函数说明。
+
+![](https://cdn.jsdelivr.net/gh/Arronlong/cdn/blogImg/20210114114019.png)
+</content>
+		<url>https://blog.arrontg.cf/article/000003/.html</url>
+		<time>2021-01-14</time>
+	</blog>
+	<blog>
+		<title>针对default主题，扩展CFBlog，添加自定义参数，以扩展更多功能</title>
+		<content>### 前置说明
+此内容是针对default主题做的变动，目录为themes/default，如果你用的其他主题，则以下内容无效。当前已经更新了4个主题了（default,default2.0,yinwang,JustNews）。
+---
+
+首先感谢大佬的无私奉献，让我可以白嫖到这么好的博客程序。大佬的开源项目地址：&amp;lt;a href="https://github.com/gdtool/cloudflare-workers-blog" target="_blank"&amp;gt;https://github.com/gdtool/cloudflare-workers-blog&amp;lt;/a&amp;gt;
+
+在使用过程中，还是遇到了一些问题，以及可以优化的地方：比如：
+
+- 不支持html标签，如video、iframe等
+- 主页链接无法通过workers进行配置
+
+## 添加html标签支持
+
+通过研究发现，当前大佬用的md编辑器是**Editor.md**(&amp;lt;a href="https://github.com/pandao/editor.md)" target="_blank"&amp;gt;github&amp;lt;/a&amp;gt; | &amp;lt;a href="http://editor.md.ipandao.com/" target="_blank"&amp;gt;官网&amp;lt;/a&amp;gt;)，这是一款开源的、可嵌入的 Markdown 在线编辑器（组件），基于 CodeMirror、jQuery 和 Marked 构建。在示例代码中发现&amp;lt;a href="http://editor.md.ipandao.com/examples/html-tags-decode.html" target="_blank"&amp;gt;识别和解析html标签&amp;lt;/a&amp;gt;的示例正好可以解决此类问题。
+
+#### 操作方法
+
+在themes/default/admin目录下的edit.html和index.html分别都有Editormd编辑器的配置，所以可以简单粗暴的在editormd配置中添加对应的`htmlDecode`配置项即可支持html标签。代码如下：
+```javascript
+	var mdEditor = editormd("content", {
+		//width  : "90%",
+		height : 640,
+		path   : "https://cdn.jsdelivr.net/npm/editor.md@1.5.0/lib/",
+		appendMarkdown : location.pathname.startsWith('/admin/edit/')? articleJson.contentMD: "# MarkDown" , //编辑器赋值，编辑页使用文章内容，新建页使用默认值
+		saveHTMLToTextarea : true,
+		mode : "markdown",
+		tex  : true,
+		tocm : true,
+		htmlDecode : true, // Decode all html tags &amp; attributes
+		//htmlDecode : "style,script,iframe,sub,sup|*" // Filter tags, and all attributes
+		codeFold : true
+	});
+```
+
+## 添加自定义参数
+
+对于第2个问题，如果是想扩充链接，最简单的方式是直接修改/themes/default/index.html文件，但是每次想调整，都得进行commit操作，比较麻烦，故按照大佬的思路，将其作为一个cf workers中的一个配置项即可。
+
+考虑到以后大佬可能会继续迭代更新，所以不打算直接在opt常量中添加配置，而是新建一个myOpt常量，以便后续能方便同步大佬的更新。
+
+### 操作方法
+
+首先解释一下配置是如何替换，直接看/themes/default/index.html文件源码，可以发现配置项都是通过`&amp;lt;!--{opt.配置项}--&amp;gt;`
+来做为占位符，然后在cf workers中进行替换，直接搜索`opt.配置项`就能看到替换的代码了。在页面访问时，均会对这些变量做替换。
+
+了解了原理以后，改起来就比较方便了。
+
+#### 1. 在页面中添加占位符
+
+修改themes/default/admin目录下的edit.html和index.html的editormd编辑器配置为：
+
+```html
+	//2021年1月2日 自定义参数
+	//var mdEditor = editormd("content", {
+	//		//width  : "90%",
+	//		height : 640,
+	//		path   : "https://cdn.jsdelivr.net/npm/editor.md@1.5.0/lib/",
+	//		appendMarkdown : articleJson.contentMD, //编辑器赋值
+	//		saveHTMLToTextarea : true,
+	//		mode : "markdown",
+	//		tex  : true,
+	//		tocm : true, 
+	//		codeFold : true
+	//	});
+	var mdEditor = editormd("content", &amp;lt;!--{ myOpt.mdEditorConfig }--&amp;gt;); //【注意：这里需要去掉{}里的空格】
+```
+
+修改/themes/default/index.html的链接为：
+
+```html
+&amp;lt;!--使用下面的方式代替了
+  &amp;lt;aside id="meta-2" class="widget widget_meta"&amp;gt;&amp;lt;p class="widget-title"&amp;gt;链接&amp;lt;/p&amp;gt;
+		&amp;lt;ul&amp;gt;
+			&amp;lt;li&amp;gt;&amp;lt;a href="/admin/"&amp;gt;管理站点&amp;lt;/a&amp;gt;&amp;lt;/li&amp;gt;
+		&amp;lt;/ul&amp;gt;
+	&amp;lt;/aside&amp;gt;
+  --&amp;gt;
+	 &amp;lt;!--{ myOpt.links }--&amp;gt; &amp;lt;!--【注意：这里需要去掉{}里的空格】--&amp;gt;
+```
+
+然后将修改提交到git项目上。
+
+#### 2. 在workers中新建自定义常量
+
+在cf workers中的OPT后面新建一个常量myOPT
+
+```javascript
+OPT={
+ //....原有配置
+}
+
+//自定义配置
+const myOPT = {
+    //  links-主页链接
+    //  mdEditorConfig-编辑页md编辑器配置，支持解析html,方便支持视图、新标签页跳转等
+    "links":`
+	&amp;lt;aside id="meta-2" class="widget widget_meta"&amp;gt;&amp;lt;p class="widget-title"&amp;gt;链接&amp;lt;/p&amp;gt;
+		&amp;lt;ul&amp;gt;
+			&amp;lt;li&amp;gt;&amp;lt;a href="/admin/"&amp;gt;管理站点&amp;lt;/a&amp;gt;&amp;lt;/li&amp;gt;
+			&amp;lt;li&amp;gt;&amp;lt;a href="https://console.leancloud.app/" target="_blank"&amp;gt;管理评论&amp;lt;/a&amp;gt;&amp;lt;/li&amp;gt;
+		&amp;lt;/ul&amp;gt;
+	&amp;lt;/aside&amp;gt;
+    `,
+    "mdEditorConfig":`
+    {
+        //width  : "90%",
+        height : 640,
+        path   : "https://cdn.jsdelivr.net/npm/editor.md@1.5.0/lib/",
+        appendMarkdown : location.pathname.startsWith('/admin/edit/')? articleJson.contentMD: "# MarkDown" , //编辑器赋值，编辑页使用文章内容，新建页使用默认值
+        saveHTMLToTextarea : true,
+        mode : "markdown",//markdown,gfm,
+        tex  : true,
+        tocm : true, 
+        codeFold : true,
+        htmlDecode : true // Decode all html tags &amp; attributes
+        // Filter tags/attributes expression : tagName,tagName,...|attrName,attrName,...
+        //htmlDecode : "style,script,iframe,sub,sup|on*"  // Filter tags, and all on* attributes
+        //htmlDecode : "style,script,iframe,sub,sup|*"    // Filter tags, and all attributes
+        //htmlDecode : "style,script,iframe,sub,sup,embed|onclick,title,onmouseover,onmouseout,style" // Filter tags, and your custom attributes
+    }`,
+}
+```
+
+#### 添加常量替换代码
+
+在workers中直接按Ctrl+F，然后点击左侧箭头从查找切换替换。
+替换原字符串为：
+```
+.r("opt.otherCodeE",OPT.otherCodeE),
+```
+目标字符串为：
+```
+.r("opt.otherCodeE",OPT.otherCodeE);for(var k in myOPT){e=e.r("myOPT."+k, myOPT[k])};
+```
+
+然后保存部署即可。
+
+### 结尾
+至此，修改均已完成，如果不生效，在cf的域名-》缓存-&amp;gt;配置-&amp;gt;点击"清除所有内容"进行缓存清除，操作完毕后，在cf blog中按Ctrl+F5进行多次强制刷新一下页面即可。
+
+当然也可以直接在域名-&amp;gt;概述，开启“开发模式”，这样cf不会使用静态资源缓存，可以放心调试了，3小时后自动关闭。</content>
+		<url>https://blog.arrontg.cf/article/000002/.html</url>
+		<time>2021-01-02</time>
+	</blog>
+	<blog>
+		<title>Hello CFBlog-Plus</title>
+		<content># Hello CFBlog
+
+测试对markdown的支持，目前有链接【markdown、a标签】、内容折叠【github】、视频【video标签】、iframe标签等
+
+文字链接：
+[百度](https://www.baidu.com/)
+
+直接连接
+&amp;lt;https://baidu.com/&amp;gt;
+
+新标签页打开：
+[百度-md无效](https://www.baidu.com/){:target="_blank"}
+&amp;lt;a href="https://baidu.com/" target="_blank"&amp;gt;百度-A标签有效&amp;lt;/a&amp;gt;
+
+
+折叠
+&amp;lt;details&amp;gt;
+  &amp;lt;summary&amp;gt;点击时的区域标题&amp;lt;/summary&amp;gt;
+这是折叠的代码1
+这是折叠的代码2
+&amp;lt;/details&amp;gt;
+
+图片
+![](https://s3.ax1x.com/2021/01/01/rxnXS1.jpg)
+
+HTML-Video标签
+&amp;lt;video src="https://media.w3.org/2010/05/sintel/trailer.mp4" controls="controls" width="640" height="320" autoplay="autoplay"&amp;gt;&amp;lt;br&amp;gt;Your browser does not support the video tag.&amp;lt;br&amp;gt;&amp;lt;/video&amp;gt;
+
+HTML-Iframe标签
+&amp;lt;iframe width=100% height="418" src="//player.bilibili.com/player.html?aid=755693579&amp;bvid=BV1R64y1f7zM&amp;cid=267216417&amp;page=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"&amp;gt; &amp;lt;/iframe&amp;gt;
+
+&amp;lt;iframe width=100% height="418" src="//www.baidu.com//" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"&amp;gt; &amp;lt;/iframe&amp;gt;
+</content>
+		<url>https://blog.arrontg.cf/article/000001/.html</url>
+		<time>2020-12-24</time>
+	</blog>
+</blogs>
